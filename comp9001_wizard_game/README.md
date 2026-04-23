@@ -12,8 +12,7 @@ This project is a modular Mario-style educational platformer built with **pygame
 
 ## Run locally
 ```bash
-cd comp9001_wizard_game
-pip install -r requirements.txt
+pip install -r comp9001_wizard_game/requirements.txt
 python main.py
 ```
 

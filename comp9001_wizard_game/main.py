@@ -1,4 +1,4 @@
-"""Async entrypoint for the 13-week COMP9001 platformer RPG."""
+"""Entry point for the COMP9001 Wizard RPG (desktop + pygbag friendly)."""
 
 from __future__ import annotations
 
@@ -11,14 +11,13 @@ from game import Game
 
 
 async def main() -> None:
+    """Initialize pygame and run the async game loop."""
     pygame.init()
-    pygame.display.set_caption("COMP9001 Knowledge Castle")
-    screen = pygame.display.set_mode((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
+    pygame.display.set_caption("COMP9001 Wizard Game")
+    screen = pygame.display.set_mode((config.WINDOW_WIDTH, config.WINDOW_HEIGHT))
 
     game = Game(screen)
-    while game.running:
-        await game.tick()
-        await asyncio.sleep(0)
+    await game.run()
 
     pygame.quit()
 

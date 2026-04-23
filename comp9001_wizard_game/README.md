@@ -1,40 +1,70 @@
-# COMP9001 Knowledge Castle (13-Week Platformer RPG)
+# COMP9001 Wizard Game
 
-This project is a modular Mario-style educational platformer built with **pygame**.
+A story-driven 2D educational RPG built with **Python + pygame**.
 
-## Highlights
-- 13-week COMP9001 progression (Week 1 to Week 13)
-- Leon mentor NPC hints during platforming
-- Boss fight at end of each week
-- Armin quiz gate after each boss (10 questions, pass >= 7)
-- Retry quiz on fail (no full level restart)
-- Async game loop for pygbag/web compatibility
+You play as a student progressing through a 3-week COMP9001-style course. Your background (wealthy, middle-income, or lower-income) changes your starting resources and the likelihood/impact of events, simulating inequality in education.
 
-## Run locally
+## Features
+
+- Player personalization (name, course, background) inside pygame UI (desktop + browser compatible)
+- Inequality-aware stat system (`xp`, `time`)
+- 3 structured course weeks with learning topics and decisions
+- Random weekly events (positive and negative)
+- Mentor + Guide advice with class-sensitive dialogue
+- Multiple endings based on performance and pressure
+- Async-compatible pygame loop for `pygbag`
+
+## Project Structure
+
+```text
+comp9001_wizard_game/
+│── main.py
+│── game.py
+│── config.py
+│── events.py
+│── ui.py
+│── assets/
+│── requirements.txt
+│── README.md
+```
+
+## Run Locally
+
 ```bash
-pip install -r comp9001_wizard_game/requirements.txt
+cd comp9001_wizard_game
+pip install -r requirements.txt
 python main.py
 ```
 
-## Build with pygbag
+## Build for Browser with pygbag
+
+Install pygbag (outside project requirements):
+
 ```bash
-cd comp9001_wizard_game
 pip install pygbag
+```
+
+Build web assets from the `comp9001_wizard_game` directory:
+
+```bash
 python -m pygbag --build .
 ```
 
-## Deploy to GitHub Pages
-1. Build with pygbag.
-2. Publish generated web output folder to `gh-pages` (or configured Pages source).
-3. Enable GitHub Pages in repository settings.
+After build, output is generated in a `build/web/` style folder (path may vary by pygbag version).
 
-## Architecture
-- `main.py`: async entrypoint
-- `game.py`: central engine/state machine
-- `player.py`: movement/physics/stats
-- `level.py` + `world.py`: level composition and mechanics
-- `enemies.py` + `bosses.py`: combat entities
-- `quiz_engine.py`: Armin quiz gate logic
-- `mentor.py`: Leon/Armin dialogue systems
-- `ui.py`: HUD/dialogue/quiz overlays
-- `data/weeks.json`: full 13-week syllabus + quizzes
+## Deploy to GitHub Pages (quick path)
+
+1. Build with `pygbag`.
+2. Push generated web build files to a branch served by GitHub Pages (commonly `gh-pages`).
+3. In GitHub repo settings, set **Pages** source to the branch/folder containing the generated `index.html`.
+4. Wait for Pages deployment, then open your published URL.
+
+## Inequality System (Short Explanation)
+
+The game assigns different starting `xp` and `time` by background:
+
+- **Wealthy**: starts with more resources and easier access to advantages
+- **Middle-income**: balanced start and mixed event pressure
+- **Lower-income**: fewer initial resources and higher pressure, but includes support/catch-up paths
+
+This creates different gameplay trajectories while keeping all paths fully completable.

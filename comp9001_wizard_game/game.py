@@ -1,162 +1,287 @@
+"""Main gameplay loop and progression logic."""
+
 from __future__ import annotations
 
-import json
-from pathlib import Path
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 
 import pygame
 
 import config
-from level import Level
-from mentor import ArminGatekeeper, MentorNPC
-from player import Player
-from quiz_engine import QuizEngine
-from ui import UI
+from events import get_random_event
+from ui import UIManager
+
+
+@dataclass
+class WeekContent:
+    week: int
+    title: str
+    topic: str
+    scenario: str
+    choices: Dict[str, Dict[str, object]]
+    color: tuple[int, int, int]
 
 
 class Game:
+    """Story-driven RPG simulation for COMP9001-style learning progression."""
+
     def __init__(self, screen: pygame.Surface):
         self.screen = screen
-        self.clock = pygame.time.Clock()
-        self.ui = UI()
-
-        self.weeks = self._load_weeks()
-        self.week_idx = 0
-
-        self.player = Player(80, 400)
-        self.level = Level(self.week_data)
-        self.quiz = QuizEngine()
-
-        self.leon = MentorNPC()
-        self.armin = ArminGatekeeper()
-
-        self.state = "gameplay"
-        self.dialogue = self.leon.mechanic_hint(self.week_data["mechanic_type"])
-        self.quiz_feedback = ""
+        self.ui = UIManager(screen)
+        self.player = config.PLAYER_PROFILE
+        self.current_week = 1
+        self.stats = config.get_starting_stats(self.player["background"])
         self.running = True
+        self.weeks = self._build_weeks()
 
-    @property
-    def week_data(self) -> dict:
-        return self.weeks[self.week_idx]
+    def _build_weeks(self) -> List[WeekContent]:
+        """Define week content in data so future weeks are easy to add."""
+        return [
+            WeekContent(
+                week=1,
+                title="Week 1",
+                topic="Introduction to Programming / First Program",
+                scenario="Your lecturer asks everyone to build a first Python script before tutorial.",
+                choices={
+                    "1": {
+                        "label": "Study after class",
+                        "effects": {"xp": 16, "time": -12},
+                        "result": "You practised syntax and gained confidence.",
+                    },
+                    "2": {
+                        "label": "Skip and hope to catch up",
+                        "effects": {"xp": -6, "time": 8},
+                        "result": "You saved time now, but missed core foundations.",
+                    },
+                    "3": {
+                        "label": "Seek help from guide",
+                        "effects": {"xp": 12, "time": -9},
+                        "result": "The guide helped you create your first program step by step.",
+                    },
+                },
+                color=(30, 45, 90),
+            ),
+            WeekContent(
+                week=2,
+                title="Week 2",
+                topic="Programming Basics / Variables & Data Types",
+                scenario="A quiz covers variables, casting, and common type mistakes.",
+                choices={
+                    "1": {
+                        "label": "Revise and complete extra exercises",
+                        "effects": {"xp": 18, "time": -14},
+                        "result": "Your variable handling became much stronger.",
+                    },
+                    "2": {
+                        "label": "Do minimum tasks only",
+                        "effects": {"xp": 4, "time": -5},
+                        "result": "You progressed, but only at a shallow level.",
+                    },
+                    "3": {
+                        "label": "Attend mentor clinic",
+                        "effects": {"xp": 14, "time": -10},
+                        "result": "The mentor clarified data types with practical examples.",
+                    },
+                },
+                color=(45, 90, 60),
+            ),
+            WeekContent(
+                week=3,
+                title="Week 3",
+                topic="Variables Reinforcement / Conditionals",
+                scenario="You must write logic with if/elif/else under time pressure.",
+                choices={
+                    "1": {
+                        "label": "Build a mini challenge project",
+                        "effects": {"xp": 22, "time": -16},
+                        "result": "You mastered conditionals through applied practice.",
+                    },
+                    "2": {
+                        "label": "Focus on surviving deadline",
+                        "effects": {"xp": 7, "time": -7},
+                        "result": "You passed tasks, but conceptual gaps remain.",
+                    },
+                    "3": {
+                        "label": "Ask both mentor and guide",
+                        "effects": {"xp": 17, "time": -13},
+                        "result": "Support helped you turn confusion into clear logic.",
+                    },
+                },
+                color=(95, 50, 90),
+            ),
+        ]
 
-    def _load_weeks(self) -> list[dict]:
-        path = Path(__file__).resolve().parent / "data" / "weeks.json"
-        data = json.loads(path.read_text(encoding="utf-8"))
-        if len(data) < config.TOTAL_WEEKS:
-            raise ValueError("weeks.json must contain 13 weeks")
-        for item in data:
-            if len(item.get("quiz_questions", [])) != config.QUIZ_QUESTIONS_PER_WEEK:
-                raise ValueError(f"Week {item.get('week')} must have 10 quiz questions")
-        return data
-
-    def _next_week(self) -> None:
-        self.week_idx += 1
-        if self.week_idx >= len(self.weeks):
-            self.state = "complete"
-            self.dialogue = "Leon: You rescued the Course Mastery Score from Knowledge Castle!"
-            return
-        self.level = Level(self.week_data)
-        self.player.reset_position(*self.level.world.spawn)
-        self.state = "gameplay"
-        self.dialogue = self.leon.mechanic_hint(self.week_data["mechanic_type"])
-
-    def _handle_events(self) -> None:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self.running = False
-                return
-            if event.type == pygame.KEYDOWN:
-                if self.state == "gameplay" and event.key in (pygame.K_UP, pygame.K_w, pygame.K_SPACE):
-                    self.player.jump()
-                elif self.state == "preboss" and event.key == pygame.K_RETURN:
-                    self.state = "quiz"
-                    self.quiz.start(self.week_data["quiz_questions"])
-                    self.dialogue = self.armin.intro(self.week_data["week"], self.week_data["topic"])
-                elif self.state == "quiz":
-                    key_to_answer = {pygame.K_a: "A", pygame.K_b: "B", pygame.K_c: "C", pygame.K_d: "D"}
-                    if event.key in key_to_answer:
-                        self.quiz.submit(key_to_answer[event.key])
-                        if self.quiz.finished:
-                            result = self.quiz.result()
-                            if result.passed:
-                                self.player.reward_xp(25)
-                                self.quiz_feedback = self.armin.passed(result.score)
-                                self.state = "week_result"
-                            else:
-                                self.quiz_feedback = self.armin.failed(result.score)
-                                self.quiz.start(self.week_data["quiz_questions"])
-                elif self.state == "week_result" and event.key == pygame.K_RETURN:
-                    self._next_week()
-
-    def _update_gameplay(self) -> None:
-        keys = pygame.key.get_pressed()
-        self.player.handle_input(keys)
-        self.player.update(self.level.world.platforms)
-        self.level.update()
-
-        if self.player.rect.y > config.SCREEN_HEIGHT + 80:
-            self.player.damage(6)
-            self.player.reset_position(*self.level.world.spawn)
-
-        for enemy in self.level.world.enemies:
-            if enemy.alive and self.player.rect.colliderect(enemy.rect):
-                dmg, xp = enemy.collide_player()
-                self.player.damage(dmg)
-                self.player.reward_xp(xp)
-
-        if self.level.maybe_activate_boss(self.player.rect):
-            self.dialogue = self.leon.pre_boss(self.week_data["topic"])
-
-        if self.level.boss_active and self.level.boss.alive and self.player.rect.colliderect(self.level.boss.rect):
-            if self.player.vel_y > 2 and self.player.rect.bottom <= self.level.boss.rect.centery + 16:
-                defeated = self.level.boss.take_hit(7)
-                self.player.vel_y = config.JUMP_FORCE * 0.5
-                if defeated:
-                    self.player.reward_xp(18)
-                    self.state = "preboss"
-                    self.dialogue = "Leon: Boss defeated. Press Enter for Armin's quiz gate."
-            else:
-                self.player.damage(5)
-
-        if self.player.stats.hp <= 0:
-            self.player.stats.hp = config.PLAYER_MAX_HP
-            self.player.stats.stamina = config.PLAYER_MAX_STAMINA
-            self.player.reset_position(*self.level.world.spawn)
-            self.dialogue = "Leon: You reset at checkpoint. Keep going."
-
-    def _render(self) -> None:
-        bg = config.WEEK_BG_COLORS[(self.week_data["week"] - 1) % len(config.WEEK_BG_COLORS)]
-        self.screen.fill(bg)
-
-        camera_x = max(0, min(self.player.rect.centerx - config.SCREEN_WIDTH // 2, 450))
-        self.level.draw(self.screen, camera_x, config.COLORS)
-
-        pygame.draw.rect(
-            self.screen,
-            config.COLORS["player"],
-            pygame.Rect(self.player.rect.x - camera_x, self.player.rect.y, self.player.rect.width, self.player.rect.height),
-            border_radius=6,
+    def _stats_text(self) -> str:
+        return (
+            f"Student: {self.player['name']} | Course: {self.player['course']} | "
+            f"Week: {self.current_week}/3 | XP: {self.stats['xp']} | Time: {self.stats['time']}"
         )
 
-        self.ui.draw_hud(self.screen, self.week_data["week"], self.week_data["topic"], self.player.stats.xp, self.player.stats.stamina, self.player.stats.hp)
-        self.ui.draw_objectives(self.screen, self.week_data.get("objectives", self.week_data.get("learning_objectives", [])))
+    def _apply_effects(self, effects: Dict[str, int]) -> None:
+        for stat_name, value in effects.items():
+            self.stats[stat_name] += value
+        self.stats["xp"] = max(0, self.stats["xp"])
+        self.stats["time"] = max(0, self.stats["time"])
 
-        if self.state == "quiz":
-            q = self.quiz.current_question()
-            if q:
-                self.ui.draw_quiz(self.screen, q, self.quiz.index + 1)
+    def _mentor_dialogue(self) -> str:
+        background = self.player["background"]
+        if background == "wealthy":
+            return "Mentor: Resources help, but consistency still decides outcomes."
+        if background == "middle":
+            return "Mentor: Balance your effort wisely—consistency beats short bursts."
+        return "Mentor: Your path is harder; ask for help early and protect your energy."
 
-        if self.state == "week_result":
-            self.ui.draw_dialogue(self.screen, f"{self.quiz_feedback} Press Enter for next week.")
-        elif self.state == "complete":
-            self.ui.draw_dialogue(self.screen, "Armin: Final clearance approved. COMP9001 mastery achieved.")
-        else:
-            self.ui.draw_dialogue(self.screen, self.dialogue)
+    def _guide_dialogue(self) -> str:
+        background = self.player["background"]
+        if background == "wealthy":
+            return "Guide Leon: I can connect you to premium support, but it costs time."
+        if background == "middle":
+            return "Guide Leon: I can help review your code if you can spare study time."
+        return "Guide Leon: I can help for free, but you'll need patience and steady practice."
 
-        pygame.display.flip()
+    def _ending_text(self) -> str:
+        xp = self.stats["xp"]
+        time_left = self.stats["time"]
 
-    async def tick(self) -> None:
-        self.clock.tick(config.FPS)
-        self._handle_events()
-        if self.state == "gameplay":
-            self._update_gameplay()
-        self._render()
+        if xp >= 125:
+            return "Ending: Top Performer — You finished as one of the strongest students."
+        if xp >= 95:
+            return "Ending: Passed Successfully — Solid result with steady progress."
+        if xp >= 80 and time_left <= 25:
+            return "Ending: Late Comeback — You struggled early but recovered in the final week."
+        if xp < 80 and time_left < 22:
+            return "Ending: Struggled / Burnout — Inequality pressures drained your momentum."
+        return "Ending: Survived the Course — You completed the term with valuable lessons."
+
+    def _apply_background_catchup(self, week_number: int) -> Optional[str]:
+        """Give lower-income players a late support path without removing challenge."""
+        if self.player["background"] == "lower" and week_number >= 2 and self.stats["xp"] < 95:
+            self._apply_effects({"xp": 6, "time": -2})
+            return "Support grant: Community tutoring gave you +6 XP for persistence."
+        return None
+
+    async def _collect_player_setup(self) -> bool:
+        """Collect player personalization inside pygame for pygbag compatibility."""
+        name = await self.ui.prompt_text(
+            title="Student Setup",
+            prompt="Enter your name:",
+            helper_text="Press Enter to confirm.",
+            default_text="Student",
+        )
+        if name is None:
+            return False
+
+        course = await self.ui.prompt_text(
+            title="Course Setup",
+            prompt="Enter course name:",
+            helper_text="Press Enter to confirm (default COMP9001).",
+            default_text="COMP9001",
+        )
+        if course is None:
+            return False
+
+        choices = {"1": "Wealthy", "2": "Middle-income", "3": "Lower-income"}
+        self.ui.draw_scene(
+            title="Background Selection",
+            lines=[
+                "Choose your socioeconomic background.",
+                "This affects your starting XP/time and event pressures.",
+            ],
+            choices=choices,
+            stats_text="Select 1, 2, or 3.",
+            background_color=(20, 30, 60),
+        )
+        selected = await self.ui.wait_for_choice(choices.keys())
+        if selected is None:
+            return False
+
+        background = config.BACKGROUND_LABELS[selected]
+        config.set_player_profile(name=name, course=course, background=background)
+        self.player = config.PLAYER_PROFILE
+        self.stats = config.get_starting_stats(background)
+        self.current_week = 1
+        return True
+
+    async def run(self) -> None:
+        if not await self._collect_player_setup():
+            return
+
+        intro_choices = {"1": "Begin your semester adventure"}
+        self.ui.draw_scene(
+            title="Welcome to the Wizard of COMP9001",
+            lines=[
+                f"{self.player['name']}, you are entering {self.player['course']}.",
+                f"Background: {config.BACKGROUND_NAMES[self.player['background']]}",
+                "Over 3 weeks, your choices, support network, and resources shape your outcomes.",
+            ],
+            choices=intro_choices,
+            stats_text=self._stats_text(),
+            background_color=(25, 25, 45),
+        )
+        if await self.ui.wait_for_choice(intro_choices.keys()) is None:
+            return
+
+        for week in self.weeks:
+            event = get_random_event(self.player["background"])
+            self._apply_effects(event["effects"])
+
+            catchup_note = self._apply_background_catchup(week.week)
+
+            lines = [
+                f"Topic: {week.topic}",
+                week.scenario,
+                f"Random event: {event['name']} — {event['description']}",
+                self._mentor_dialogue(),
+                self._guide_dialogue(),
+            ]
+            if catchup_note:
+                lines.append(catchup_note)
+
+            choice_map = {key: item["label"] for key, item in week.choices.items()}
+            self.ui.draw_scene(
+                title=week.title,
+                lines=lines,
+                choices=choice_map,
+                stats_text=self._stats_text(),
+                background_color=week.color,
+            )
+
+            selected = await self.ui.wait_for_choice(choice_map.keys())
+            if selected is None:
+                self.running = False
+                break
+
+            chosen = week.choices[selected]
+            self._apply_effects(chosen["effects"])
+
+            outcome_choices = {"1": "Continue"}
+            self.ui.draw_scene(
+                title=f"Week {week.week} Outcome",
+                lines=[
+                    str(chosen["result"]),
+                    f"XP change: {chosen['effects']['xp']} | Time change: {chosen['effects']['time']}",
+                    f"Current totals → XP: {self.stats['xp']} | Time: {self.stats['time']}",
+                ],
+                choices=outcome_choices,
+                stats_text=self._stats_text(),
+                background_color=week.color,
+            )
+            if await self.ui.wait_for_choice(outcome_choices.keys()) is None:
+                self.running = False
+                break
+
+            self.current_week += 1
+
+        final_choices = {"1": "Exit game"}
+        self.ui.draw_scene(
+            title="Semester Complete",
+            lines=[
+                self._ending_text(),
+                "Thank you for playing this inequality-aware learning simulation.",
+                "Tip: replay with another background and compare outcomes.",
+            ],
+            choices=final_choices,
+            stats_text=self._stats_text(),
+            background_color=(20, 20, 20),
+        )
+        await self.ui.wait_for_choice(final_choices.keys())
